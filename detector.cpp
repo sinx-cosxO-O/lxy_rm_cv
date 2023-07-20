@@ -3,6 +3,7 @@
 #include <vector>
 #include <iostream>
 #include "detector.hpp"
+#include "number_classifier.hpp"
 
 using namespace std;
 
@@ -25,12 +26,16 @@ namespace rm_auto_aim{
         // }
         cv::namedWindow("binary_img", cv::WINDOW_NORMAL);
         cv::imshow("binary_img", binary_img);
-
-        // if (!armors_.empty()) {
-        //     classifier->extractNumbers(input, armors_);
-        //     classifier->classify(armors_);
-        // }
-
+        // 创建数字识别对象
+        std::string model_path = "D:/Progamming/cv/model/mlp.onnx";
+        std::string label_path = "D:/Progamming/cv/model/label.txt";
+        double threshold = 0.7;
+        std::vector<std::string> ignore_classes = {"negative"};
+        rm_auto_aim::NumberClassifier numberClassifier(model_path, label_path, threshold,ignore_classes);
+        if (!armors_.empty()) {
+            numberClassifier.extractNumbers(input, armors_);
+            numberClassifier.classify(armors_);
+        }
         return armors_;
     }
 
@@ -41,7 +46,6 @@ namespace rm_auto_aim{
         // cv::namedWindow("gray_img", cv::WINDOW_NORMAL);
         // cv::imshow("gray_img", gray_img);
         cv::Mat binary_img;
-        int binary_thres = 200;
         cv::threshold(gray_img, binary_img, binary_thres, 255, cv::THRESH_BINARY);
         // cv::namedWindow("binary_img", cv::WINDOW_NORMAL);
         // cv::imshow("binary_img", binary_img);
@@ -214,13 +218,29 @@ namespace rm_auto_aim{
         return type;
     }
 
+    cv::Mat Detector::getAllNumbersImage()
+    {
+        if (armors_.empty()) {
+            return cv::Mat(cv::Size(20, 28), CV_8UC1);
+        } else {
+            std::vector<cv::Mat> number_imgs;
+            number_imgs.reserve(armors_.size());
+            for (auto & armor : armors_) {
+            number_imgs.emplace_back(armor.number_img);
+            }
+            cv::Mat all_num_img;
+            cv::vconcat(number_imgs, all_num_img);
+            return all_num_img;
+        }
+    }
+
     void Detector::drawResults(cv::Mat & img)
     {
         // Draw Lights
         for (const auto & light : lights_) {
             cv::circle(img, light.top, 3, cv::Scalar(255, 255, 255), 1);
             cv::circle(img, light.bottom, 3, cv::Scalar(255, 255, 255), 1);
-            auto line_color = light.color == RED ? cv::Scalar(255, 255, 0) : cv::Scalar(255, 0, 255);
+            auto line_color = light.color == RED ? cv::Scalar(255, 0, 255) : cv::Scalar(255, 255, 0);
             cv::line(img, light.top, light.bottom, line_color, 2);
         }
 
@@ -230,6 +250,13 @@ namespace rm_auto_aim{
             cv::line(img, armor.left_light.top, armor.right_light.bottom, cv::Scalar(0, 255, 0), 2);
             cv::line(img, armor.left_light.bottom, armor.right_light.top, cv::Scalar(0, 255, 0), 2);
         }
+
+        // Show numbers and confidence
+        for (const auto & armor : armors_) {
+            cv::putText(
+            img, armor.classfication_result, armor.left_light.top, cv::FONT_HERSHEY_SIMPLEX, 0.8,
+            cv::Scalar(0, 255, 255), 2);
+        }
         cv::namedWindow("lights", cv::WINDOW_NORMAL);
         cv::imshow("lights", img);
     }
@@ -237,22 +264,24 @@ namespace rm_auto_aim{
 
 int main() {
     //---------读取图像文件---------
-    cv::Mat rgb_img = cv::imread("D:/Moon/RoborMaster/cvPhoto/ImageDataSet1/test/image/193.jpg", cv::IMREAD_COLOR);
+    cv::Mat rgb_img = cv::imread("D:/Moon/RoborMaster/cvPhoto/ImageDataSet1/test/image/479.jpg", cv::IMREAD_COLOR);
 
     if (rgb_img.empty()) {
         std::cout << "Failed to read image" << std::endl;
         return -1;
     }
-    
+    //-----------创建对象-------------------
     // 创建 rm_auto_aim::Detector 对象
-    // 使用带参数构造函数创建 rm_auto_aim::Detector 对象
     rm_auto_aim::Detector::LightParams lightParams;
     // 设置 lightParams 的值
     rm_auto_aim::Detector::ArmorParams armorParams;
     // 设置 armorParams 的值
-    int binary_thres = 150;
+    int binary_thres = 170;
     int detect_color = 1;
     rm_auto_aim::Detector detector(binary_thres, detect_color, lightParams, armorParams);
+
+
+    //------调用-----------------
     detector.detect(rgb_img);
     detector.drawResults(rgb_img);
     //等待按下任意按键后关闭窗口
